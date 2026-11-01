@@ -1,1 +1,58 @@
+name: Build APK Doc Sach
 
+on:
+  push:
+    paths:
+      - '**.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Giai nen project
+        run: |
+          if [ -f DocSach.zip ]; then ZIP=DocSach.zip; else ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1); fi
+          if [ -z "$ZIP" ]; then echo "Khong thay file .zip o thu muc goc cua repo"; exit 1; fi
+          echo "Dung file: $ZIP"
+          rm -rf src_build && mkdir src_build
+          unzip -q -o "$ZIP" -d src_build
+          SETTINGS=$(find src_build -name settings.gradle.kts -not -path '*/build/*' | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "Khong thay settings.gradle.kts trong zip"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: gradle -p "$PROJECT_DIR" assembleRelease -Pvc=${{ github.run_number }} --no-daemon --stacktrace
+
+      - name: Doi ten APK
+        run: |
+          mkdir -p out
+          cp "$PROJECT_DIR"/app/build/outputs/apk/release/*.apk out/DocSach-v${{ github.run_number }}.apk
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DocSach-v${{ github.run_number }}
+          path: out/*.apk
+
+      - name: Tao Release de tai APK tren dien thoai
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Doc Sach v${{ github.run_number }}
+          files: out/*.apk
